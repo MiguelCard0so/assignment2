@@ -21,7 +21,7 @@ BENCH_PATH = os.path.join(
     "NATS-tss-v1_0-3ffb9-simple",
     "NATS-tss-v1_0-3ffb9-simple",
 ) # Path to the NATS-Bench dataset
-HP = 200
+HP_CONSTANT = 5
 IS_RANDOM = False
 
 BUDGET = int(os.getenv("BUDGET"))  # budget for the number of loops through the method 
@@ -51,6 +51,8 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
     # Define the algorithm budget
     budget = BUDGET if BUDGET is not None else budget
 
+    hp = HP_CONSTANT * budget
+
     # Define the path to the NATS-Bench dataset
     api = create(BENCH_PATH, 'tss', fast_mode=True, verbose=False)
     begin = time()
@@ -71,7 +73,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
 
     # Y_train is the performance metric (e.g., accuracy) of the initial samples
     Y_train = np.array([
-        api.get_more_info(arch, hp=HP, is_random=IS_RANDOM, dataset=dataset)[val_metric]
+        api.get_more_info(arch, hp=hp, is_random=IS_RANDOM, dataset=dataset)[val_metric]
         for arch in initial_samples
     ])
 
@@ -90,7 +92,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
             "iteration": 0,
             "phase": "initial",
             "performance": float(performance),
-            "test_accuracy": api.get_more_info(int(idx), hp=HP, is_random=IS_RANDOM, dataset=dataset.removesuffix("-valid"))["test-accuracy"]
+            "test_accuracy": api.get_more_info(int(idx), hp=hp, is_random=IS_RANDOM, dataset=dataset.removesuffix("-valid"))["test-accuracy"]
         }
         for idx, performance in zip(initial_idxs, Y_train)
     ]
@@ -118,7 +120,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
         next_arch = api.arch(next_arch_idx)
 
         # Evaluate the selected architecture
-        performance = api.get_more_info(next_arch, hp=HP, is_random=IS_RANDOM, dataset=dataset)[val_metric]
+        performance = api.get_more_info(next_arch, hp=hp, is_random=IS_RANDOM, dataset=dataset)[val_metric]
 
         # Update the training data with the new sample
         observed_indices.add(next_arch_idx)
@@ -126,7 +128,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
         Y_train = np.append(Y_train, performance)
 
         # Test accuracy, to be used for the report
-        test_accuracy = api.get_more_info(next_arch, hp=HP, is_random=IS_RANDOM, dataset=dataset.removesuffix("-valid"))['test-accuracy']
+        test_accuracy = api.get_more_info(next_arch, hp=hp, is_random=IS_RANDOM, dataset=dataset.removesuffix("-valid"))['test-accuracy']
 
         iteration = i + 1
         history.append({

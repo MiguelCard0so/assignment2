@@ -19,7 +19,6 @@ BENCH_PATH = os.path.join(
 ) # Path to the NATS-Bench dataset
 
 DATASET = "cifar10-valid"
-TEST_DATASET = "cifar10"
 HP = "200"
 MAX_EPOCHS = int(os.getenv("BUDGET", 200))  # budget for the number of loops through the method
 CHECKPOINTS = (1, 3, 9, 27, 81, MAX_EPOCHS)
@@ -60,7 +59,6 @@ def run(
 	promotion_factor=PROMOTION_FACTOR,
 	checkpoints=CHECKPOINTS,
 	dataset=DATASET,
-	test_dataset=TEST_DATASET,
 	seed=RANDOM_SEED,
 	output_dir="results/iteration_based",
 ):
@@ -138,7 +136,7 @@ def run(
 	# get test accuracy of the best candidate
 	test_info = api.get_more_info(
 		api.query_index_by_arch(best_candidate["architecture"]),
-		test_dataset,
+		dataset.removesuffix("-valid"),
 		hp=HP,
 		is_random=False
 		)
