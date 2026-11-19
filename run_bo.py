@@ -21,7 +21,7 @@ BENCH_PATH = os.path.join(
     "NATS-tss-v1_0-3ffb9-simple",
     "NATS-tss-v1_0-3ffb9-simple",
 ) # Path to the NATS-Bench dataset
-HP_CONSTANT = 5
+HP_CONSTANT = 2
 IS_RANDOM = False
 
 BUDGET = int(os.getenv("BUDGET"))  # budget for the number of loops through the method 
@@ -51,7 +51,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
     # Define the algorithm budget
     budget = BUDGET if BUDGET is not None else budget
 
-    hp = HP_CONSTANT * budget
+    hp = str(HP_CONSTANT * budget)
 
     # Define the path to the NATS-Bench dataset
     api = create(BENCH_PATH, 'tss', fast_mode=True, verbose=False)

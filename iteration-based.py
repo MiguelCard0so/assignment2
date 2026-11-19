@@ -19,7 +19,7 @@ BENCH_PATH = os.path.join(
 ) # Path to the NATS-Bench dataset
 
 DATASET = "cifar10-valid"
-HP = "200"
+HP_CONSTANT = 2
 MAX_EPOCHS = int(os.getenv("BUDGET", 200))  # budget for the number of loops through the method
 CHECKPOINTS = (1, 3, 9, 27, 81, MAX_EPOCHS)
 CANDIDATE_COUNT = 81
@@ -34,6 +34,8 @@ def power_law_curve(epochs, asymptote, scale, exponent):
 def predict_final_accuracy(epochs, accuracies, max_epochs=MAX_EPOCHS):
 	epochs = np.asarray(epochs, dtype=float)
 	accuracies = np.asarray(accuracies, dtype=float)
+
+	max_epochs = HP_CONSTANT * max_epochs # just to maintain consistent to the other epoch values
 	if len(epochs) < 3:
 		return float(accuracies[-1])
 
@@ -76,6 +78,8 @@ def run(
 	if candidate_count > len(api):
 		raise ValueError(f"candidate_count exceeds the search space size ({len(api)}).")
 
+	hp = str(HP_CONSTANT * MAX_EPOCHS)
+
 	rng = random.Random(seed)
 	candidate_indices = rng.sample(range(len(api)), candidate_count)
 	all_candidates = [
@@ -93,8 +97,16 @@ def run(
 				api.query_index_by_arch(candidate["architecture"]),
 				dataset,
 				iepoch=epoch - 1,
-				hp=HP,
+				hp=hp,
 				is_random=False,
+			)
+
+			test_info = api.get_more_info(
+				candidate["index"],
+				dataset.removesuffix("-valid"),
+				iepoch=epoch - 1,
+				hp=hp,
+				is_random=False
 			)
 			
 			if "valid-accuracy" not in info or info["valid-accuracy"] is None:
@@ -104,7 +116,7 @@ def run(
 				)
 
 			accuracy = float(info["valid-accuracy"])
-			test_accuracy = float(info["test-accuracy"])
+			test_accuracy = float(test_info["test-accuracy"])
 			previous_epoch = candidate["epochs"][-1] if candidate["epochs"] else 0
 			resource_used += epoch - previous_epoch
 			candidate["epochs"].append(epoch)
@@ -137,7 +149,7 @@ def run(
 	test_info = api.get_more_info(
 		api.query_index_by_arch(best_candidate["architecture"]),
 		dataset.removesuffix("-valid"),
-		hp=HP,
+		hp=hp,
 		is_random=False
 		)
 
