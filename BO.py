@@ -28,40 +28,55 @@ class GaussianProcessRegressor:
         self.noise_variance = noise_variance
         self.X_train = None
         self.y_train = None
-        self.K_inv = None # Inverse of the kernel matrix for training data.
+        self.L = None
+        self.alpha = None
 
     def fit(self, X_train: np.ndarray, y_train: np.ndarray):
         # Fit the GPR model to the training data.
-        self.X_train = X_train
-        self.y_train = y_train
+        X_train = np.asarray(X_train)
+        y_train = np.asarray(y_train).reshape(-1)
+        if len(X_train) != len(y_train):
+            raise ValueError("X_train and y_train must contain the same number of samples.")
+
         K = self._compute_kernel_matrix(X_train)
         K += self.noise_variance * np.eye(len(X_train))
-        self.K_inv = np.linalg.inv(K)
+        jitter = 1e-12
+        for _ in range(6):
+            try:
+                L = np.linalg.cholesky(K + jitter * np.eye(len(K)))
+                break
+            except np.linalg.LinAlgError:
+                jitter *= 10
+        else:
+            raise np.linalg.LinAlgError(
+                "Kernel matrix is not positive definite after adding jitter."
+            )
+
+        alpha = np.linalg.solve(
+            L.T,
+            np.linalg.solve(L, y_train),
+        )
+        self.X_train = X_train
+        self.y_train = y_train
+        self.L = L
+        self.alpha = alpha
 
     def predict(self, X_test: np.ndarray):
         # Compute the mean and covariance of the predictions for the test data.
-        try:
-            K_s = self._compute_kernel_matrix(self.X_train, X_test)
-            K_ss = self._compute_kernel_matrix(X_test)
+        if self.L is None or self.alpha is None:
+            raise RuntimeError("The Gaussian process must be fitted before prediction.")
 
-        except (self.X_train is None, self.y_train is None) as e:
-            print(f"Error occurred while predicting: {e}")
-            raise
-        mu_s = K_s.T @ self.K_inv @ self.y_train
-        cov_s = K_ss - K_s.T @ self.K_inv @ K_s
+        X_test = np.asarray(X_test)
+        K_s = self._compute_kernel_matrix(self.X_train, X_test)
+        K_ss = self._compute_kernel_matrix(X_test)
+        v = np.linalg.solve(self.L, K_s)
+        mu_s = K_s.T @ self.alpha
+        cov_s = K_ss - v.T @ v
+        cov_s = (cov_s + cov_s.T) / 2
         return mu_s, cov_s
 
     def _compute_kernel_matrix(self, X1: np.ndarray, X2: np.ndarray = None) -> np.ndarray:
-        # Compute the kernel matrix between two sets of input points
-        try:
-            if X2 is None:
-                X2 = X1
-            n1, n2 = len(X1), len(X2)
-            K = np.zeros((n1, n2))
-            for i in range(n1):
-                for j in range(n2):
-                    K[i, j] = self.kernel(X1[i], X2[j])
-        except (X1 is None, X2 is None) as e:
-            print(f"Error occurred while computing kernel matrix: {e}")
-            raise
-        return K
+        # Kernels accept batches and return the full pairwise matrix.
+        if X2 is None:
+            X2 = X1
+        return self.kernel(X1, X2)

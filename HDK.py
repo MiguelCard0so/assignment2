@@ -12,16 +12,24 @@ class HammingDistanceKernel:
         self.lenght_scale = lenght_scale
         self.normalize = normalize
 
-    def __call__(self, x_i: np.ndarray, x_j: np.ndarray) -> float:
-        # Compute the Hamming distance between two input points and return the kernel value.
-        X1 = np.atleast_2d(x_i)
-        X2 = np.atleast_2d(x_j)
+    def __call__(self, x_i: np.ndarray, x_j: np.ndarray) -> np.ndarray | float:
+        # Compute all pairwise Hamming distances between the input rows.
+        X1 = np.asarray(x_i)
+        X2 = np.asarray(x_j)
+        scalar_result = X1.ndim == 1 and X2.ndim == 1
+        X1 = np.atleast_2d(X1)
+        X2 = np.atleast_2d(X2)
 
-        # Summing over the last axis counts the mismatches -> shape (N, K)
-        pairwise_mismatches = np.sum(X1[:, np.newaxis, :] != X2[np.newaxis, :, :], axis=-1)
+        pairwise_mismatches = np.count_nonzero(
+            X1[:, np.newaxis, :] != X2[np.newaxis, :, :],
+            axis=-1,
+        )
 
         if self.normalize:
-            vector_lenght = X1.shape[-1]
-            pairwise_mismatches = pairwise_mismatches / vector_lenght
+            vector_length = X1.shape[-1]
+            pairwise_mismatches = pairwise_mismatches / vector_length
 
-        return self.signal_variance * np.exp(-pairwise_mismatches / self.lenght_scale)
+        result = self.signal_variance * np.exp(
+            -pairwise_mismatches / self.lenght_scale
+        )
+        return float(result[0, 0]) if scalar_result else result

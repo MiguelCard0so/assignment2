@@ -12,8 +12,8 @@ class ThompsonSampling:
             # Initialize the Thompson Sampling acquisition function with a GPR model.
             self.gpr_model = gpr_model
     
-    def select_next_architecture(self, api, candidate_architectures: np.ndarray):
+    def select_next_architecture(self, api, candidate_architectures: np.ndarray, rng):
         # Select the next architecture to evaluate based on Thompson Sampling.
         mu, cov = self.gpr_model.predict(candidate_architectures)
-        sampled_values = np.random.multivariate_normal(mu, cov)
+        sampled_values = rng.multivariate_normal(mu, cov)
         return int(np.argmax(sampled_values))

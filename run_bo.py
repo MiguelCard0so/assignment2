@@ -59,11 +59,15 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
 
     rng = np.random.default_rng(seed) # random seed to be defined
 
-    print(f"Sizes: {len(api[0])} and {len(api)}")
-    
-    initial_idxs = maximin_hamming_design(X_all=api, n_samples=initial_length, rng=rng)
+    X_all = np.array([
+        architecture_to_features(api.arch(idx))
+        for idx in range(len(api))
+    ])
+    initial_idxs = maximin_hamming_design(
+        X_all=X_all, n_samples=initial_length, rng=rng
+    )
     initial_samples = [api.arch(idx) for idx in initial_idxs]
-    X_initial = np.array([architecture_to_features(arch) for arch in initial_samples])
+    X_initial = X_all[initial_idxs]
 
     # Y_train is the performance metric (e.g., accuracy) of the initial samples
     Y_train = np.array([
@@ -86,7 +90,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
             "iteration": 0,
             "phase": "initial",
             "performance": float(performance),
-            "test_accuracy": api.get_more_info(idx, hp=HP, is_random=IS_RANDOM, dataset=dataset.removesuffix("-valid")["test-accuracy"])
+            "test_accuracy": api.get_more_info(int(idx), hp=HP, is_random=IS_RANDOM, dataset=dataset.removesuffix("-valid"))["test-accuracy"]
         }
         for idx, performance in zip(initial_idxs, Y_train)
     ]
@@ -105,11 +109,11 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
         candidate_indices = rng.choice(
             remaining_indices, min(candidate_pool_size, len(remaining_indices))
         )
-        X_candidates = np.array([architecture_to_features(api.arch(idx)) for idx in candidate_indices])
+        X_candidates = X_all[candidate_indices]
 
         # Use Thompson Sampling to select the next architecture to evaluate
         thompson_sampling = ThompsonSampling(gpr)
-        position = thompson_sampling.select_next_architecture(api, X_candidates)
+        position = thompson_sampling.select_next_architecture(api, X_candidates, rng)
         next_arch_idx = candidate_indices[position]
         next_arch = api.arch(next_arch_idx)
 
@@ -118,7 +122,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
 
         # Update the training data with the new sample
         observed_indices.add(next_arch_idx)
-        X_initial = np.vstack([X_initial, architecture_to_features(next_arch)])
+        X_initial = np.vstack([X_initial, X_all[next_arch_idx]])
         Y_train = np.append(Y_train, performance)
 
         # Test accuracy, to be used for the report
@@ -145,7 +149,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
     time_taken = time() - begin
 
     # Save model
-    with open(os.path.join(output_dir, f"{output_dir}/gpr_model.pkl"), "wb") as f:
+    with open(f"{output_dir}/gpr_model.pkl", "wb") as f:
         pickle.dump(gpr, f)
 
     metric_label = {
