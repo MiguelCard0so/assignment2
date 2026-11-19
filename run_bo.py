@@ -8,6 +8,7 @@ from BO import RadialBasisFunctionKernel, GaussianProcessRegressor
 from ThompsonSampling import ThompsonSampling
 from RBF import RadialBasisFunctionKernel
 from HDK import HammingDistanceKernel
+from hamming import maximin_hamming_design
 from time import time
 import random
 from dotenv import load_dotenv
@@ -56,8 +57,11 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
     if not 0 < initial_length <= len(api):
         raise ValueError(f"initial_length must be between 1 and {len(api)}.")
 
-    rng = random.Random(seed)
-    initial_idxs = rng.sample(range(len(api)), initial_length)
+    rng = np.random.default_rng(seed) # random seed to be defined
+
+    print(f"Sizes: {len(api[0])} and {len(api)}")
+    
+    initial_idxs = maximin_hamming_design(X_all=api, n_samples=initial_length, rng=rng)
     initial_samples = [api.arch(idx) for idx in initial_idxs]
     X_initial = np.array([architecture_to_features(arch) for arch in initial_samples])
 
@@ -82,6 +86,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
             "iteration": 0,
             "phase": "initial",
             "performance": float(performance),
+            "test_accuracy": api.get_more_info(idx, hp=HP, is_random=IS_RANDOM, dataset=dataset.removesuffix("-valid")["test-accuracy"])
         }
         for idx, performance in zip(initial_idxs, Y_train)
     ]
@@ -97,7 +102,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
         if not remaining_indices:
             raise ValueError("The evaluation budget exceeds the number of unobserved architectures.")
 
-        candidate_indices = rng.sample(
+        candidate_indices = rng.choice(
             remaining_indices, min(candidate_pool_size, len(remaining_indices))
         )
         X_candidates = np.array([architecture_to_features(api.arch(idx)) for idx in candidate_indices])
@@ -117,7 +122,7 @@ def run(budget=100, initial_length=10, val_metric='valid-accuracy', dataset='cif
         Y_train = np.append(Y_train, performance)
 
         # Test accuracy, to be used for the report
-        test_accuracy = api.get_more_info(next_arch, hp=HP, is_random=IS_RANDOM, dataset=dataset)['test-accuracy']
+        test_accuracy = api.get_more_info(next_arch, hp=HP, is_random=IS_RANDOM, dataset=dataset.removesuffix("-valid"))['test-accuracy']
 
         iteration = i + 1
         history.append({
