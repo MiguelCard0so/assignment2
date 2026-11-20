@@ -14,18 +14,8 @@ from time import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-from dotenv import load_dotenv
 from nats_bench import create
 from scipy.optimize import least_squares
-import argparse
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--dataset", type=str, default="cifar10-valid", help="Dataset to be used")
-
-args = parser.parse_args()
-
-load_dotenv()
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -38,14 +28,14 @@ BENCH_PATH = os.path.join(
 
 SUPPORTED_DATASETS = ("cifar10-valid", "cifar100", "ImageNet16-120")
 
-HP_CONSTANT = 2                                # extrapolation target = HP_CONSTANT * MAX_EPOCHS
-MAX_EPOCHS = int(os.getenv("BUDGET", 200))     # global budget (last checkpoint)
+HP_CONSTANT = 1                                # hp = extrapolation target = HP_CONSTANT * MAX_EPOCHS
+MAX_EPOCHS = 200                               # last checkpoint = full training
 CHECKPOINTS = (1, 3, 9, 27, 81, MAX_EPOCHS)
 CANDIDATE_COUNT = 81
 PROMOTION_FACTOR = 3
 PRUNING_START_RUNG = 2                         # first rung at which pruning happens
 RANDOM_SEED = 42
-DATASET = args.dataset
+DATASET = "cifar10-valid"
 OUTPUT_DIR = "results/iteration_based"
 
 
@@ -60,7 +50,7 @@ def dataset_label(dataset):
 # Key names differ between datasets and training schedules. Order = priority.
 # On 200-epoch schedules, cifar100 / ImageNet16-120 report the test metric as
 # "valtest-accuracy" instead of "test-accuracy".
-VALID_KEYS = ("valid-accuracy", "x-valid-accuracy", "train-accuracy")
+VALID_KEYS = ("valid-accuracy", "x-valid-accuracy", "valtest-accuracy")
 TEST_KEYS = ("test-accuracy", "x-test-accuracy", "valtest-accuracy", "ori-test-accuracy")
 
 
@@ -169,7 +159,8 @@ def sample_candidates(api, candidate_count, seed):
 
 def evaluate_at_checkpoint(api, candidate, epoch, dataset, hp):
     """Query one candidate at `epoch`, update its curve and return the epochs spent."""
-    valid_acc, test_acc = query_accuracies(api, candidate["index"], dataset, hp, iepoch=epoch - 1)
+    iepoch = None if epoch >= MAX_EPOCHS else epoch - 1
+    valid_acc, test_acc = query_accuracies(api, candidate["index"], dataset, hp, iepoch=iepoch)
 
     previous_epoch = candidate["epochs"][-1] if candidate["epochs"] else 0
     candidate["epochs"].append(epoch)
@@ -247,22 +238,37 @@ def save_outputs(output_dir, dataset, candidates, best, history):
     )
     plt.close(figure)
 
-
+def schedule_cost(n, checkpoints, promotion_factor):
+    """Epochs spent by the checkpoint schedule when starting with n candidates."""
+    cost, previous, active = 0, 0, n
+    for rung, epoch in enumerate(checkpoints):
+        cost += active * (epoch - previous)
+        previous = epoch
+        if PRUNING_START_RUNG <= rung < len(checkpoints) - 1:
+            active = max(1, math.ceil(active / promotion_factor))
+    return cost
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
 def run(
+    budget_epochs=None,
     candidate_count=CANDIDATE_COUNT,
     promotion_factor=PROMOTION_FACTOR,
     checkpoints=CHECKPOINTS,
     dataset=DATASET,
     seed=RANDOM_SEED,
-    output_dir=OUTPUT_DIR,
+    output_dir=None,
+    api=None,
 ):
     checkpoints = tuple(checkpoints)
+    if budget_epochs is not None:    # largest candidate set whose schedule fits the budget
+        candidate_count = promotion_factor
+        while schedule_cost(candidate_count + 1, checkpoints, promotion_factor) <= budget_epochs:
+            candidate_count += 1
     validate_arguments(candidate_count, promotion_factor, checkpoints, dataset)
 
-    api = create(BENCH_PATH, "tss", fast_mode=True, verbose=False)
+    if api is None:
+        api = create(BENCH_PATH, "tss", fast_mode=True, verbose=False)
     if candidate_count > len(api):
         raise ValueError(f"candidate_count exceeds the search space size ({len(api)}).")
 
@@ -280,19 +286,14 @@ def run(
     if output_dir is not None:
         save_outputs(output_dir, dataset, candidates, best, history)
 
-    result = {
+    return {
         "best_index": best["index"],
         "best_architecture": best["architecture"],
-        "best_test_accuracy": final_test_acc,
-        "resource_used_epochs": resource_used,
+        "test_acc": final_test_acc,
+        "epochs_used": resource_used,
         "elapsed_seconds": elapsed,
         "history": history,
     }
-    print(f"Best architecture index: {result['best_index']}")
-    print(f"Best {dataset} test accuracy: {final_test_acc:.4f}")
-    print(f"Epoch-equivalent resource used: {resource_used}")
-    print(f"Elapsed seconds: {elapsed:.2f}")
-    return result
 
 
 if __name__ == "__main__":

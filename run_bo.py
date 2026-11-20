@@ -12,7 +12,6 @@ from time import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-from dotenv import load_dotenv
 from nats_bench import create
 
 from BO import GaussianProcessRegressor
@@ -21,29 +20,15 @@ from hamming import maximin_hamming_design
 from ThompsonSampling import ThompsonSampling
 import argparse
 
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--dataset", type=str, default="cifar10-valid", help="Dataset to be used")
-
-args = parser.parse_args()
-
-load_dotenv()
-
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-BENCH_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "NATS-tss-v1_0-3ffb9-simple",
-    "NATS-tss-v1_0-3ffb9-simple",
-)
+BENCH_PATH = os.environ.get('NATS_BENCH_PATH', 'NATS-tss-v1_0-3ffb9-simple')
 
 SUPPORTED_DATASETS = ("cifar10-valid", "cifar100", "ImageNet16-120")
 
-HP_CONSTANT = 2                                # hp = HP_CONSTANT * BUDGET
 IS_RANDOM = False
-BUDGET = int(os.getenv("BUDGET", 200))         # shared across all methods
-DATASET = args.dataset
+DATASET = "cifar10-valid"
 INITIAL_LENGTH = 10
 CANDIDATE_POOL_SIZE = 256
 RANDOM_SEED = 42
@@ -206,11 +191,6 @@ def search(api, X_all, dataset, hp, budget, initial_length, rng):
                 "test_accuracy": test_acc,
             }
 
-        print(
-            f"[{iteration}/{budget}] best so far: {best['architecture']} "
-            f"(val {best['validation_accuracy']:.4f})"
-        )
-
     return best, history, gpr
 
 
@@ -280,44 +260,41 @@ def save_outputs(output_dir, dataset, history, gpr):
 # Entry point
 # --------------------------------------------------------------------------- #
 def run(
-    budget=BUDGET,
+    budget_epochs=10000,
     initial_length=INITIAL_LENGTH,
     dataset=DATASET,
     seed=RANDOM_SEED,
-    output_dir=OUTPUT_DIR,
+    output_dir=None,
+    api=None,
+    X_all=None,
 ):
     if dataset not in SUPPORTED_DATASETS:
         raise ValueError(f"dataset must be one of {SUPPORTED_DATASETS}, got {dataset!r}.")
+    if api is None:
+        api = create(BENCH_PATH, "tss", fast_mode=False, verbose=False)
+    if X_all is None:
+        X_all = build_feature_matrix(api)
 
-    api = create(BENCH_PATH, "tss", fast_mode=True, verbose=False)
-    if not 0 < initial_length <= len(api):
-        raise ValueError(f"initial_length must be between 1 and {len(api)}.")
-    if initial_length + budget > len(api):
-        raise ValueError("initial_length + budget exceeds the search space size.")
-
-    hp = str(HP_CONSTANT * budget)
-    budget = int(hp)
+    n_evals = budget_epochs // 200                    # one evaluation = one full 200-epoch training
+    initial_length = min(initial_length, max(1, n_evals // 2))
+    budget = n_evals - initial_length                 # BO iterations after the initial design
     rng = np.random.default_rng(seed)
 
     started_at = time()
-    X_all = build_feature_matrix(api)
-    best, history, gpr = search(api, X_all, dataset, hp, budget, initial_length, rng)
+    best, history, gpr = search(api, X_all, dataset, "200", budget, initial_length, rng)
     elapsed = time() - started_at
 
     if output_dir is not None:
         save_outputs(output_dir, dataset, history, gpr)
 
-    result = {
+    return {
         "best_index": best["index"],
         "best_architecture": best["architecture"],
-        "best_test_accuracy": best["test_accuracy"],
+        "test_acc": best["test_accuracy"],
+        "epochs_used": n_evals * 200,
         "elapsed_seconds": elapsed,
         "history": history,
     }
-    print(f"Best architecture index: {result['best_index']}")
-    print(f"Best {dataset} test accuracy: {result['best_test_accuracy']:.4f}")
-    print(f"Elapsed seconds: {elapsed:.2f}")
-    return result
 
 
 if __name__ == "__main__":
