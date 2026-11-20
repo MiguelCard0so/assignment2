@@ -257,8 +257,8 @@ def run(
     checkpoints=CHECKPOINTS,
     dataset=DATASET,
     seed=RANDOM_SEED,
-    output_dir=None,
-    api=None,
+    output_dir=OUTPUT_DIR,
+    budget=MAX_EPOCHS
 ):
     checkpoints = tuple(checkpoints)
     if budget_epochs is not None:    # largest candidate set whose schedule fits the budget
@@ -288,6 +288,7 @@ def run(
 
     return {
         "best_index": best["index"],
+        "seed": seed,
         "best_architecture": best["architecture"],
         "test_acc": final_test_acc,
         "epochs_used": resource_used,
