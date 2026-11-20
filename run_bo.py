@@ -106,7 +106,6 @@ def query_accuracies(api, index, dataset, hp, iepoch=None):
 
     return valid_acc, test_acc
 
-
 # --------------------------------------------------------------------------- #
 # Search space encoding
 # --------------------------------------------------------------------------- #
@@ -309,6 +308,7 @@ def run(
 
     result = {
         "best_index": best["index"],
+        "seed": seed,
         "best_architecture": best["architecture"],
         "best_test_accuracy": best["test_accuracy"],
         "elapsed_seconds": elapsed,

@@ -258,6 +258,7 @@ def run(
     dataset=DATASET,
     seed=RANDOM_SEED,
     output_dir=OUTPUT_DIR,
+    budget=MAX_EPOCHS
 ):
     checkpoints = tuple(checkpoints)
     validate_arguments(candidate_count, promotion_factor, checkpoints, dataset)
@@ -282,6 +283,7 @@ def run(
 
     result = {
         "best_index": best["index"],
+        "seed": seed,
         "best_architecture": best["architecture"],
         "best_test_accuracy": final_test_acc,
         "resource_used_epochs": resource_used,
