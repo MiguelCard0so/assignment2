@@ -1,8 +1,11 @@
 import math
 import random
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.patches import Circle, FancyArrowPatch
+import csv
+import os
+from nats_bench import create
+import iteration_based
+import run_bo
+import plot_results
 
 SEARCH_DATASET = {'cifar10': 'cifar10-valid', 'cifar100': 'cifar100',
                   'ImageNet16-120': 'ImageNet16-120'}
@@ -79,13 +82,6 @@ def successive_halving(api, dataset, budget_epochs, n, rng=None):
 
 
 if __name__ == '__main__':
-    import collections
-    import csv
-    import os
-    from nats_bench import create
-    import iteration_based
-    import run_bo
-
     N_SEEDS = 30                                   # use 2 for a first test run
     MULTIPLES = [2, 5, 10, 20, 50, 100]            # budgets in full trainings (200 epochs each)
     DATASETS = ['cifar10', 'cifar100', 'ImageNet16-120']
@@ -118,24 +114,5 @@ if __name__ == '__main__':
                             print('over budget:', ds, name, m * MAX_EPOCHS, r['epochs_used'])
                         writer.writerow([ds, name, m * MAX_EPOCHS, seed, r['test_acc'], r['epochs_used']])
                 out.flush()
-
-    # Figure: test accuracy vs. budget, mean and 95% CI over seeds
-    data = collections.defaultdict(list)
-    with open('results.csv') as fh:
-        for row in csv.DictReader(fh):
-            data[(row['dataset'], row['method'], int(row['budget_epochs']))].append(float(row['test_acc']))
-    fig, axes = plt.subplots(1, 3, figsize=(14, 3.8))
-    for ax, ds in zip(axes, DATASETS):
-        for name in methods:
-            accs = np.array([data[(ds, name, m * MAX_EPOCHS)] for m in MULTIPLES])
-            mean, ci = accs.mean(1), 1.96 * accs.std(1, ddof=1) / math.sqrt(N_SEEDS)
-            ax.plot(MULTIPLES, mean, marker='o', ms=4, label=name)
-            ax.fill_between(MULTIPLES, mean - ci, mean + ci, alpha=0.2)
-        ax.axhline(np.mean(data[(ds, 'random_sample', MAX_EPOCHS)]), color='gray', ls='--', lw=1,
-                   label='random_sample')
-        ax.set(xscale='log', xticks=MULTIPLES, xticklabels=MULTIPLES, title=ds,
-               xlabel='Budget (full trainings of 200 epochs)', ylabel='Test accuracy (%)')
-        ax.grid(alpha=0.3)
-    axes[0].legend(fontsize=7)
-    fig.tight_layout()
-    fig.savefig('budget_curves.png', dpi=300, bbox_inches='tight')
+    
+    plot_results.main('results.csv', 'budget_curves.png')
