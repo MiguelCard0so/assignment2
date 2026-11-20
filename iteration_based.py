@@ -20,11 +20,7 @@ from scipy.optimize import least_squares
 # --------------------------------------------------------------------------- #
 # Configuration
 # --------------------------------------------------------------------------- #
-BENCH_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "NATS-tss-v1_0-3ffb9-simple",
-    "NATS-tss-v1_0-3ffb9-simple",
-)
+BENCH_PATH = os.environ.get('NATS_BENCH_PATH', 'NATS-tss-v1_0-3ffb9-simple')
 
 SUPPORTED_DATASETS = ("cifar10-valid", "cifar100", "ImageNet16-120")
 
@@ -257,8 +253,9 @@ def run(
     checkpoints=CHECKPOINTS,
     dataset=DATASET,
     seed=RANDOM_SEED,
-    output_dir=OUTPUT_DIR,
-    budget=MAX_EPOCHS
+    output_dir=None,
+    budget=MAX_EPOCHS,
+    api=None
 ):
     checkpoints = tuple(checkpoints)
     if budget_epochs is not None:    # largest candidate set whose schedule fits the budget
@@ -268,7 +265,7 @@ def run(
     validate_arguments(candidate_count, promotion_factor, checkpoints, dataset)
 
     if api is None:
-        api = create(BENCH_PATH, "tss", fast_mode=True, verbose=False)
+        api = create(BENCH_PATH, "tss", fast_mode=False, verbose=False)
     if candidate_count > len(api):
         raise ValueError(f"candidate_count exceeds the search space size ({len(api)}).")
 
